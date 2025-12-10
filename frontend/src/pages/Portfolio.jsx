@@ -12,7 +12,75 @@ const Portfolio = () => {
       try {
         setLoading(true);
         const response = await getPortfolio();
-        setPortfolio(response.data.data || response.data);
+        const apiData = response.data.data || response.data;
+
+        // Transform API data to match component state
+        const holdings = (apiData.assets || []).map((asset) => {
+          const type = ["BTC", "ETH", "SOL", "ADA", "DOT"].includes(
+            asset.assetId
+          )
+            ? "crypto"
+            : "stock";
+          return {
+            symbol: asset.assetId,
+            name: asset.assetId, // API doesn't provide name
+            type,
+            shares: asset.quantity,
+            averageCost: asset.avgBuyPrice,
+            currentPrice: asset.currentPrice,
+            currentValue: asset.value,
+            totalCost: asset.quantity * asset.avgBuyPrice,
+            changePercent: asset.changePercent,
+          };
+        });
+
+        // Calculate Asset Allocation
+        const totalValue = apiData.totalValue || 0;
+        const stockValue = holdings
+          .filter((h) => h.type === "stock")
+          .reduce((sum, h) => sum + h.currentValue, 0);
+        const cryptoValue = holdings
+          .filter((h) => h.type === "crypto")
+          .reduce((sum, h) => sum + h.currentValue, 0);
+
+        const assetAllocation = {
+          stocks: totalValue ? (stockValue / totalValue) * 100 : 0,
+          crypto: totalValue ? (cryptoValue / totalValue) * 100 : 0,
+        };
+
+        // Calculate Performance Metrics
+        let bestPerformer = null;
+        let worstPerformer = null;
+
+        if (holdings.length > 0) {
+          const sorted = [...holdings].sort(
+            (a, b) => b.changePercent - a.changePercent
+          );
+          bestPerformer = {
+            symbol: sorted[0].symbol,
+            change: sorted[0].changePercent,
+          };
+          worstPerformer = {
+            symbol: sorted[sorted.length - 1].symbol,
+            change: sorted[sorted.length - 1].changePercent,
+          };
+        }
+
+        const totalCost = holdings.reduce((sum, h) => sum + h.totalCost, 0);
+        const totalProfit = totalValue - totalCost;
+        const averageReturn = totalCost ? (totalProfit / totalCost) * 100 : 0;
+
+        setPortfolio({
+          ...apiData,
+          changePercentage: apiData.totalChangePercent,
+          holdings,
+          assetAllocation,
+          performanceMetrics: {
+            bestPerformer,
+            worstPerformer,
+            averageReturn,
+          },
+        });
         setError(null);
       } catch (err) {
         console.error("Error fetching portfolio:", err);
